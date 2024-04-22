@@ -20,6 +20,8 @@ from django.http import JsonResponse
 import stripe
 from django.views.generic.base import TemplateView
 from rest_framework.parsers import JSONParser   
+from datetime import datetime, timedelta
+import requests
 
 
 #---------------------------- Regestraion/Login ---------------------------- start
@@ -214,10 +216,30 @@ class ManageLeaveView(APIView):
     permission_classes = [CanCraeteLeaveRequest]
 
     def post(self, request):
+        start_date = request.data.get('leaveStartDate')
+        end_date = request.data.get('leaveEndDate')
+
+        # Convert string dates to datetime objects
+        start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+
+        print("start_date", start_date)
+        print("end_date", end_date)
+
+        # Calculate total leave days
+        total_leave_days = (end_date - start_date).days + 1
+
+        print("total_leave_days", total_leave_days)
+
+        # Assign total_leave_days to request data
+        request.data['leave_days'] = total_leave_days
         request.data['empName'] = request.user.id
+
+        # Serialize and save leave request
         serializer = ManageRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
         
 class ApproveLeaveView(APIView):
@@ -301,15 +323,44 @@ class LeaveListView(ListAPIView):
 #         return Response({'payment_intent_id': payment_intent.id}, status=status.HTTP_200_OK)
     
 
+from django.db.models import Sum
 
 class PaySalaryView(APIView):
     permission_classes = [CanCreateSalary]
 
     def post(self, request):
-        serializer = PaySalarySerializer(data=request.data)
+        user_id = request.data.get('user')
+        print("user",user_id)
+        provided_salary_amount = float(request.data.get('amount'))
+        emp = ManageLeave.objects.filter(empName=user_id)
+        print("emp",emp)
+
+        # Get the total approved leave days for the user
+        # total_leave_days = user.leaves_requested.filter(approveLeave=True).aggregate(total_leave_days=models.Sum('leaveDays'))['total_leave_days'] or 0
+        total_leave_days = ManageLeave.objects.filter(empName=user_id, approveLeave=True).aggregate(total_leave_days=Sum('leave_days'))['total_leave_days']
+        print("total_leave_days", total_leave_days)  
+        # Calculate the remaining working days after deducting leave days
+        remaining_working_days = 21 - total_leave_days
+
+        # Calculate the total salary percentage based on remaining working days
+        total_salary_percentage = (remaining_working_days / 21) * 100
+
+        # Get the user's default salary percentage
+        default_salary_percentage = 100
+
+        # Determine the actual salary percentage to be used
+        actual_salary_percentage = min(default_salary_percentage, total_salary_percentage)
+
+        # Calculate the salary amount based on the actual salary percentage
+        salary_amount = (actual_salary_percentage / 100) * provided_salary_amount
+        amount = int(salary_amount)
+        # Save the salary payment information
+        serializer = PaySalarySerializer(data={'user': user_id, 'amount': amount, 'payment_method': request.data.get('payment_method')})
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     
 
     

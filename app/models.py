@@ -121,12 +121,13 @@ class ManageLeave(models.Model):
     leaveReason = models.CharField(max_length=500)
     notifyTo = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='leaves_notified')
     approveLeave = models.BooleanField(default=False, null=True)
+    leave_days = models.IntegerField(default=0)
 
-    
+
 class SalaryPayment(models.Model):
     transaction_id = models.AutoField(primary_key=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_date = models.DateField(default=now)
+    payment_date = models.DateField(default=now().date)
     payment_method = models.CharField(max_length=100)   
 
